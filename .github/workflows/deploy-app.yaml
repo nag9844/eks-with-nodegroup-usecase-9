@@ -1,0 +1,76 @@
+name: 'Deploy Application'
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'app/**'
+      - 'k8s/**'
+      - 'Dockerfile'
+      - '.github/workflows/deploy-app.yml'
+
+env:
+  AWS_REGION: 'ap-south-1'
+  ECR_REPOSITORY: 'flask-microservice'
+  EKS_CLUSTER_NAME: 'flask-microservice-cluster-dev'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build-and-deploy:
+    name: 'Build and Deploy Application'
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+
+    - name: Build, tag, and push image to Amazon ECR
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+        echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+    - name: Update kube config
+      run: aws eks update-kubeconfig --name $EKS_CLUSTER_NAME --region $AWS_REGION
+
+    - name: Deploy to EKS
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        # Update image in deployment manifest
+        sed -i "s|CONTAINER_IMAGE|$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG|g" k8s/deployment.yaml
+        
+        # Apply Kubernetes manifests
+        kubectl apply -f k8s/namespace.yaml
+        kubectl apply -f k8s/
+        
+        # Wait for deployment to be ready
+        kubectl rollout status deployment/flask-app -n flask-app --timeout=300s
+        
+        # Get service information
+        kubectl get services -n flask-app
+
+    - name: Verify deployment
+      run: |
+        kubectl get pods -n flask-app
+        kubectl get services -n flask-app
+        kubectl get ingress -n flask-app
