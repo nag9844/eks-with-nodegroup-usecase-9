@@ -43,10 +43,6 @@ output "public_subnet_ids" {
   value       = module.vpc.public_subnet_ids
 }
 
-output "terraform_state_bucket" {
-  description = "S3 bucket for Terraform state"
-  value       = aws_s3_bucket.terraform_state.bucket
-}
 
 output "region" {
   description = "AWS region"
