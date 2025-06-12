@@ -1,180 +1,63 @@
-# DevOps EKS Deployment - UseCase 9
+## Requirements
 
-A comprehensive solution for deploying Python Flask microservices to Amazon EKS using Infrastructure as Code (Terraform), CI/CD pipelines (GitHub Actions), and Kubernetes orchestration.
+| Name | Version |
+|------|---------|
+| <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.12.0 |
+| <a name="requirement_aws"></a> [aws](#requirement\_aws) | ~> 5.0 |
+| <a name="requirement_helm"></a> [helm](#requirement\_helm) | ~> 2.17 |
+| <a name="requirement_kubernetes"></a> [kubernetes](#requirement\_kubernetes) | ~> 2.35 |
 
-## Architecture Overview
+## Providers
 
-This solution includes:
-- **Infrastructure**: VPC, EKS cluster, ECR, IAM roles using Terraform
-- **Containerization**: Docker images for Flask microservices
-- **Orchestration**: Kubernetes deployments, services, and ingress
-- **CI/CD**: GitHub Actions workflows for IaC and application deployment
-- **Monitoring**: CloudWatch, Prometheus, and Grafana integration
+| Name | Version |
+|------|---------|
+| <a name="provider_aws"></a> [aws](#provider\_aws) | 5.99.1 |
 
-## Directory Structure
+## Modules
 
-```
-├── .github/workflows/           # GitHub Actions workflows
-├── modules/                     # Terraform modules
-│   ├── vpc/                    # VPC module
-│   ├── eks/                    # EKS module
-│   ├── ecr/                    # ECR module
-│   └── cloudwatch/             # CloudWatch module
-├── app/                        # Flask microservices application
-├── k8s/                        # Kubernetes manifests
-├── monitoring/                 # Monitoring and logging configurations
-├── docs/                       # Documentation and diagrams
-├── main.tf                     # Main Terraform configuration
-├── variables.tf                # Terraform variables
-├── outputs.tf                  # Terraform outputs
-└── terraform.tfvars.example    # Example variables file
-```
+| Name | Source | Version |
+|------|--------|---------|
+| <a name="module_cloudwatch"></a> [cloudwatch](#module\_cloudwatch) | ./modules/cloudwatch | n/a |
+| <a name="module_ecr"></a> [ecr](#module\_ecr) | ./modules/ecr | n/a |
+| <a name="module_eks"></a> [eks](#module\_eks) | ./modules/eks | n/a |
+| <a name="module_vpc"></a> [vpc](#module\_vpc) | ./modules/vpc | n/a |
 
-## Backend Configuration
+## Resources
 
-This project uses a centralized S3 backend for Terraform state management:
+| Name | Type |
+|------|------|
+| [aws_eks_cluster.cluster](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/eks_cluster) | data source |
+| [aws_eks_cluster_auth.cluster](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/eks_cluster_auth) | data source |
 
-```hcl
-terraform {
-  backend "s3" {
-    bucket       = "usecases-terraform-state-bucket"
-    key          = "usecase9/statefile.tfstate"
-    region       = "ap-south-1"
-    encrypt      = true
-    use_lockfile = true
-  }
-}
-```
+## Inputs
 
-## Quick Start
+| Name | Description | Type | Default | Required |
+|------|-------------|------|---------|:--------:|
+| <a name="input_availability_zones"></a> [availability\_zones](#input\_availability\_zones) | Availability zones | `list(string)` | <pre>[<br>  "ap-south-1a",<br>  "ap-south-1b"<br>]</pre> | no |
+| <a name="input_aws_region"></a> [aws\_region](#input\_aws\_region) | AWS region | `string` | `"ap-south-1"` | no |
+| <a name="input_cluster_version"></a> [cluster\_version](#input\_cluster\_version) | Kubernetes version | `string` | `"1.28"` | no |
+| <a name="input_common_tags"></a> [common\_tags](#input\_common\_tags) | Common tags to apply to all resources | `map(string)` | <pre>{<br>  "Environment": "dev",<br>  "ManagedBy": "terraform",<br>  "Owner": "devops-team",<br>  "Project": "flask-microservice"<br>}</pre> | no |
+| <a name="input_ecr_repository_name"></a> [ecr\_repository\_name](#input\_ecr\_repository\_name) | ECR repository name | `string` | `"flask-microservice"` | no |
+| <a name="input_environment"></a> [environment](#input\_environment) | Environment name | `string` | `"dev"` | no |
+| <a name="input_log_retention_days"></a> [log\_retention\_days](#input\_log\_retention\_days) | CloudWatch log retention in days | `number` | `7` | no |
+| <a name="input_node_desired_size"></a> [node\_desired\_size](#input\_node\_desired\_size) | Desired number of nodes | `number` | `2` | no |
+| <a name="input_node_disk_size"></a> [node\_disk\_size](#input\_node\_disk\_size) | Disk size for EKS nodes | `number` | `20` | no |
+| <a name="input_node_instance_types"></a> [node\_instance\_types](#input\_node\_instance\_types) | EC2 instance types for EKS nodes | `list(string)` | <pre>[<br>  "t3.medium"<br>]</pre> | no |
+| <a name="input_node_max_size"></a> [node\_max\_size](#input\_node\_max\_size) | Maximum number of nodes | `number` | `4` | no |
+| <a name="input_node_min_size"></a> [node\_min\_size](#input\_node\_min\_size) | Minimum number of nodes | `number` | `1` | no |
+| <a name="input_private_subnet_cidrs"></a> [private\_subnet\_cidrs](#input\_private\_subnet\_cidrs) | CIDR blocks for private subnets | `list(string)` | <pre>[<br>  "10.0.10.0/24",<br>  "10.0.11.0/24"<br>]</pre> | no |
+| <a name="input_project"></a> [project](#input\_project) | Project name | `string` | `"flask-microservice"` | no |
+| <a name="input_public_subnet_cidrs"></a> [public\_subnet\_cidrs](#input\_public\_subnet\_cidrs) | CIDR blocks for public subnets | `list(string)` | <pre>[<br>  "10.0.1.0/24",<br>  "10.0.2.0/24"<br>]</pre> | no |
+| <a name="input_vpc_cidr"></a> [vpc\_cidr](#input\_vpc\_cidr) | CIDR block for VPC | `string` | `"10.0.0.0/16"` | no |
 
-### Prerequisites
+## Outputs
 
-- AWS CLI configured with appropriate permissions
-- Terraform >= 1.0
-- kubectl
-- Docker
-- GitHub repository with OIDC configured for AWS authentication
-
-### Setup Instructions
-
-1. **Configure GitHub OIDC**:
-   - Ensure your GitHub repository has OIDC configured with AWS
-   - The workflow uses role: `arn:aws:iam::199570228070:role/oidc-demo-role`
-
-2. **Initialize Terraform**:
-   ```bash
-   # Copy example variables
-   cp terraform.tfvars.example terraform.tfvars
-   
-   # Edit variables as needed
-   vim terraform.tfvars
-   
-   # Initialize Terraform
-   terraform init
-   ```
-
-3. **Deploy Infrastructure**:
-   - Create a pull request to trigger Terraform plan
-   - Merge to main branch to apply changes
-   - Monitor deployment in GitHub Actions
-
-4. **Deploy Application**:
-   - Push application changes to trigger container build and deployment
-   - Monitor deployment in Actions tab
-
-5. **Access Application**:
-   ```bash
-   kubectl get ingress -n flask-app
-   ```
-
-## CI/CD Workflows
-
-### Terraform CI/CD (`terraform-cicd.yml`)
-
-**Triggers**:
-- Pull requests to main branch
-- Push to main branch
-- Manual workflow dispatch
-
-**Features**:
-- Comprehensive linting with TFLint, tfsec, and Checkov
-- Terraform format, validate, plan, and apply
-- Automatic documentation generation with terraform-docs
-- Pull request comments with plan output
-
-### Application Deployment (`deploy-app.yml`)
-
-**Triggers**:
-- Push to main branch with changes to:
-  - `app/**`
-  - `k8s/**`
-  - `Dockerfile`
-  - Workflow file
-
-**Features**:
-- Docker image build and push to ECR
-- Kubernetes deployment with rolling updates
-- Deployment verification and status checks
-
-## Security Features
-
-- **OIDC Authentication**: Secure AWS access without long-lived credentials
-- **Private Subnets**: EKS worker nodes in private subnets
-- **Security Groups**: Minimal required access rules
-- **IAM Roles**: Least privilege principles
-- **Container Security**: Image scanning in ECR, non-root containers
-- **Kubernetes RBAC**: Role-based access control enabled
-
-## Monitoring
-
-- **CloudWatch**: Cluster and application logs
-- **Prometheus**: Metrics collection with custom application metrics
-- **Grafana**: Visualization dashboards
-
-Access Grafana dashboard:
-```bash
-kubectl port-forward -n monitoring svc/grafana 3000:80
-```
-
-## Module Structure
-
-### VPC Module
-- Multi-AZ VPC with public and private subnets
-- NAT gateways for outbound internet access
-- Proper tagging for EKS integration
-
-### EKS Module
-- Managed EKS cluster with configurable version
-- Auto-scaling node groups
-- Essential add-ons (VPC CNI, CoreDNS, kube-proxy, EBS CSI)
-- Security groups and IAM roles
-
-### ECR Module
-- Container registries with lifecycle policies
-- Image scanning enabled
-- Encryption at rest
-
-### CloudWatch Module
-- Log groups for cluster and application logs
-- CloudWatch alarms for monitoring
-- SNS integration for alerting
-
-## Contributing
-
-1. Create feature branch
-2. Make changes
-3. Submit pull request
-4. Terraform plan will run automatically
-5. Merge to main to deploy
-
-## Cleanup
-
-To destroy all resources:
-
-```bash
-terraform destroy
-```
-
-For detailed setup instructions, see [Setup Guide](docs/setup.md).
-For architecture details, see [Architecture Documentation](docs/architecture.md).
+| Name | Description |
+|------|-------------|
+| <a name="output_cluster_endpoint"></a> [cluster\_endpoint](#output\_cluster\_endpoint) | EKS cluster endpoint |
+| <a name="output_cluster_name"></a> [cluster\_name](#output\_cluster\_name) | EKS cluster name |
+| <a name="output_cluster_security_group_id"></a> [cluster\_security\_group\_id](#output\_cluster\_security\_group\_id) | EKS cluster security group ID |
+| <a name="output_ecr_repository_url"></a> [ecr\_repository\_url](#output\_ecr\_repository\_url) | ECR repository URL |
+| <a name="output_kubeconfig_certificate_authority_data"></a> [kubeconfig\_certificate\_authority\_data](#output\_kubeconfig\_certificate\_authority\_data) | Base64 encoded certificate data |
+| <a name="output_region"></a> [region](#output\_region) | AWS region |
+| <a name="output_vpc_id"></a> [vpc\_id](#output\_vpc\_id) | VPC ID |
