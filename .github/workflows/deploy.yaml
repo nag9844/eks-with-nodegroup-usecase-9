@@ -165,6 +165,17 @@ jobs:
         # Wait a bit more for webhook to be fully ready
         sleep 30
 
+    - name: Clean Previous Deployment
+      run: |
+        echo "Cleaning up any existing deployment..."
+        # Delete existing deployment to avoid patch conflicts
+        kubectl delete deployment flask-app -n flask-app --ignore-not-found=true
+        
+        # Wait for pods to be terminated
+        kubectl wait --for=delete pod -l app=flask-app -n flask-app --timeout=120s || true
+        
+        echo "Previous deployment cleaned up"
+
     - name: Deploy Application
       env:
         IMAGE_URI: ${{ needs.build.outputs.image }}
@@ -175,7 +186,7 @@ jobs:
         # Apply Kubernetes manifests in order
         kubectl apply -f k8s/namespace.yaml
         
-        # Deploy application first (without ingress)
+        # Deploy application components
         kubectl apply -f k8s/deployment.yaml
         kubectl apply -f k8s/service.yaml
         
