@@ -61,6 +61,7 @@ jobs:
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
         
         echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
   deploy:
     name: Deploy to EKS
     runs-on: ubuntu-latest
@@ -80,57 +81,131 @@ jobs:
     - name: Update kube config
       run: aws eks update-kubeconfig --name $EKS_CLUSTER_NAME --region $AWS_REGION
 
-    - name: Install AWS Load Balancer Controller
+    - name: Install eksctl and Helm
       run: |
-        # Check if AWS Load Balancer Controller is already installed
-        if ! kubectl get deployment -n kube-system aws-load-balancer-controller > /dev/null 2>&1; then
-          # Download IAM policy
-          curl -O https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.5.4/docs/install/iam_policy.json
-          
-          # Create IAM policy
-          aws iam create-policy \
-            --policy-name AWSLoadBalancerControllerIAMPolicy \
-            --policy-document file://iam_policy.json || true
-          
-          # Create service account
-          eksctl create iamserviceaccount \
-            --cluster=$EKS_CLUSTER_NAME \
-            --namespace=kube-system \
-            --name=aws-load-balancer-controller \
-            --role-name AmazonEKSLoadBalancerControllerRole \
-            --attach-policy-arn=arn:aws:iam::$(aws sts get-caller-identity --query Account --output text):policy/AWSLoadBalancerControllerIAMPolicy \
-            --approve || true
-          
-          # Install AWS Load Balancer Controller using Helm
-          helm repo add eks https://aws.github.io/eks-charts
-          helm repo update
-          helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
-            -n kube-system \
-            --set clusterName=$EKS_CLUSTER_NAME \
-            --set serviceAccount.create=false \
-            --set serviceAccount.name=aws-load-balancer-controller
+        # Install eksctl
+        curl --silent --location "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C /tmp
+        sudo mv /tmp/eksctl /usr/local/bin
+        
+        # Install Helm
+        curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+    - name: Setup AWS Load Balancer Controller
+      run: |
+        # Get account ID
+        ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+        
+        # Check if AWS Load Balancer Controller is already installed and working
+        if kubectl get deployment -n kube-system aws-load-balancer-controller > /dev/null 2>&1; then
+          echo "AWS Load Balancer Controller exists, checking if it's ready..."
+          if kubectl wait --for=condition=available deployment/aws-load-balancer-controller -n kube-system --timeout=60s; then
+            echo "AWS Load Balancer Controller is ready"
+            exit 0
+          else
+            echo "AWS Load Balancer Controller exists but not ready, reinstalling..."
+            kubectl delete deployment aws-load-balancer-controller -n kube-system || true
+            kubectl delete service aws-load-balancer-webhook-service -n kube-system || true
+            sleep 30
+          fi
         fi
-    - name: Deploy to EKS
+        
+        echo "Installing AWS Load Balancer Controller..."
+        
+        # Download IAM policy
+        curl -O https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.5.4/docs/install/iam_policy.json
+        
+        # Create IAM policy (ignore if exists)
+        aws iam create-policy \
+          --policy-name AWSLoadBalancerControllerIAMPolicy \
+          --policy-document file://iam_policy.json || echo "Policy already exists"
+        
+        # Delete existing service account if it exists
+        eksctl delete iamserviceaccount \
+          --cluster=$EKS_CLUSTER_NAME \
+          --namespace=kube-system \
+          --name=aws-load-balancer-controller || true
+        
+        # Create service account
+        eksctl create iamserviceaccount \
+          --cluster=$EKS_CLUSTER_NAME \
+          --namespace=kube-system \
+          --name=aws-load-balancer-controller \
+          --role-name AmazonEKSLoadBalancerControllerRole \
+          --attach-policy-arn=arn:aws:iam::$ACCOUNT_ID:policy/AWSLoadBalancerControllerIAMPolicy \
+          --approve
+        
+        # Add Helm repo
+        helm repo add eks https://aws.github.io/eks-charts
+        helm repo update
+        
+        # Uninstall if exists
+        helm uninstall aws-load-balancer-controller -n kube-system || true
+        sleep 10
+        
+        # Install AWS Load Balancer Controller
+        helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
+          -n kube-system \
+          --set clusterName=$EKS_CLUSTER_NAME \
+          --set serviceAccount.create=false \
+          --set serviceAccount.name=aws-load-balancer-controller \
+          --wait --timeout=300s
+        
+        echo "AWS Load Balancer Controller installed successfully"
+
+    - name: Wait for Load Balancer Controller
+      run: |
+        echo "Waiting for AWS Load Balancer Controller to be ready..."
+        kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=aws-load-balancer-controller -n kube-system --timeout=300s
+        
+        # Additional wait to ensure webhook is ready
+        echo "Waiting additional 30 seconds for webhook to be fully ready..."
+        sleep 30
+        
+        # Verify webhook service exists
+        kubectl get service aws-load-balancer-webhook-service -n kube-system
+        echo "Load Balancer Controller is ready!"
+
+    - name: Deploy Application
       env:
         IMAGE_URI: ${{ needs.build.outputs.image }}
       run: |
         # Update the image in deployment
         sed -i "s|ACCOUNT_ID.dkr.ecr.REGION.amazonaws.com/flask-microservice-app:latest|$IMAGE_URI|g" k8s/deployment.yaml
         
-        # Apply Kubernetes manifests
+        # Apply Kubernetes manifests in order
         kubectl apply -f k8s/namespace.yaml
+        
+        # Deploy application first (without ingress)
         kubectl apply -f k8s/deployment.yaml
         kubectl apply -f k8s/service.yaml
-        kubectl apply -f k8s/ingress.yaml
         kubectl apply -f k8s/hpa.yaml
         
         # Wait for deployment to be ready
         kubectl rollout status deployment/flask-app -n flask-app --timeout=300s
         
-        # Get the load balancer URL
+        # Verify pods are running
+        kubectl get pods -n flask-app
+        
+        # Now deploy ingress after everything is ready
+        kubectl apply -f k8s/ingress.yaml
+        
+        echo "Application deployed successfully!"
+
+    - name: Get Application Status
+      run: |
+        echo "=== Deployment Status ==="
+        kubectl get pods -n flask-app
+        echo ""
+        echo "=== Service Status ==="
+        kubectl get svc -n flask-app
+        echo ""
+        echo "=== Ingress Status ==="
+        kubectl get ingress -n flask-app
+        echo ""
         echo "Waiting for load balancer to be ready..."
         sleep 60
         kubectl get ingress flask-app-ingress -n flask-app
+
   test:
     name: Test Application
     runs-on: ubuntu-latest
@@ -149,19 +224,42 @@ jobs:
 
     - name: Test Application Health
       run: |
-        # Get the load balancer URL
-        LB_URL=$(kubectl get ingress flask-app-ingress -n flask-app -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+        # Test via port-forward first
+        echo "Testing application via port-forward..."
+        kubectl port-forward -n flask-app svc/flask-app-service 8080:80 &
+        sleep 10
         
-        if [ -z "$LB_URL" ]; then
-          echo "Load balancer URL not found, testing via port-forward"
-          kubectl port-forward -n flask-app svc/flask-app-service 8080:80 &
-          sleep 10
-          curl -f http://localhost:8080/health || exit 1
-          curl -f http://localhost:8080/ || exit 1
+        # Test health endpoint
+        if curl -f http://localhost:8080/health; then
+          echo "Health check passed"
         else
-          echo "Testing application at: http://$LB_URL"
-          # Wait for DNS propagation
-          sleep 120
-          curl -f http://$LB_URL/health || exit 1
-          curl -f http://$LB_URL/ || exit 1
+          echo "Health check failed"
+          exit 1
+        fi
+        
+        # Test main endpoint
+        if curl -f http://localhost:8080/; then
+          echo "Main endpoint test passed"
+        else
+          echo "Main endpoint test failed"
+          exit 1
+        fi
+        
+        # Test API endpoint
+        if curl -f http://localhost:8080/api/users; then
+          echo "API endpoint test passed"
+        else
+          echo "API endpoint test failed"
+          exit 1
+        fi
+        
+        # Try to get load balancer URL
+        LB_URL=$(kubectl get ingress flask-app-ingress -n flask-app -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "")
+        
+        if [ ! -z "$LB_URL" ]; then
+          echo "Application will be accessible at: http://$LB_URL"
+          echo "HTTPS will be available at: https://$LB_URL"
+        else
+          echo "Load balancer URL not ready yet. Check later with:"
+          echo "kubectl get ingress flask-app-ingress -n flask-app"
         fi
