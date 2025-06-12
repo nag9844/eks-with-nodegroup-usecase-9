@@ -38,7 +38,7 @@ output "ecr_repository_url" {
 output "kubeconfig_certificate_authority_data" {
   description = "Base64 encoded certificate data"
   # value       = aws_eks_cluster.main.certificate_authority[0].data
-  value = module.eks.kubeconfig_certificate_authority_data[0].data
+  value = module.eks.kubeconfig_certificate_authority_data
   sensitive   = true
 }
 
