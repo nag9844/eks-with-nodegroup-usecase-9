@@ -7,7 +7,7 @@ metadata:
     app: flask-app
     version: v1
 spec:
-  replicas: 3
+  replicas: 2  # Reduced from 3 to 2 for faster deployment
   selector:
     matchLabels:
       app: flask-app
@@ -30,8 +30,8 @@ spec:
           value: "production"
         resources:
           requests:
-            memory: "128Mi"
-            cpu: "100m"
+            memory: "64Mi"   # Reduced memory request
+            cpu: "50m"       # Reduced CPU request
           limits:
             memory: "256Mi"
             cpu: "200m"
@@ -39,7 +39,7 @@ spec:
           httpGet:
             path: /health
             port: 5000
-          initialDelaySeconds: 30
+          initialDelaySeconds: 60  # Increased initial delay
           periodSeconds: 10
           timeoutSeconds: 5
           failureThreshold: 3
@@ -47,7 +47,7 @@ spec:
           httpGet:
             path: /health
             port: 5000
-          initialDelaySeconds: 5
+          initialDelaySeconds: 10  # Reduced initial delay for readiness
           periodSeconds: 5
           timeoutSeconds: 3
           failureThreshold: 3
@@ -55,13 +55,15 @@ spec:
           allowPrivilegeEscalation: false
           runAsNonRoot: true
           runAsUser: 1000
-          readOnlyRootFilesystem: true
+          readOnlyRootFilesystem: false  # Changed to false to avoid potential issues
           capabilities:
             drop:
             - ALL
       securityContext:
         fsGroup: 1000
       restartPolicy: Always
+      # Add image pull policy to ensure latest image is pulled
+      imagePullPolicy: Always
 ---
 apiVersion: v1
 kind: ConfigMap

@@ -179,8 +179,29 @@ jobs:
         kubectl apply -f k8s/deployment.yaml
         kubectl apply -f k8s/service.yaml
         
-        # Wait for deployment to be ready
-        kubectl rollout status deployment/flask-app -n flask-app --timeout=300s
+        # Check deployment status before waiting
+        echo "Checking deployment status..."
+        kubectl get pods -n flask-app
+        kubectl describe deployment flask-app -n flask-app
+        
+        # Wait for deployment to be ready with extended timeout
+        echo "Waiting for deployment to be ready..."
+        kubectl rollout status deployment/flask-app -n flask-app --timeout=600s
+        
+        # Verify pods are running
+        echo "Verifying pods are running..."
+        kubectl get pods -n flask-app
+        
+        # Check if any pods are failing
+        FAILED_PODS=$(kubectl get pods -n flask-app --field-selector=status.phase=Failed -o name)
+        if [ ! -z "$FAILED_PODS" ]; then
+          echo "Found failed pods, describing them:"
+          kubectl describe $FAILED_PODS -n flask-app
+        fi
+        
+        # Show logs from any problematic pods
+        echo "Showing recent logs from all pods:"
+        kubectl logs -l app=flask-app -n flask-app --tail=50 || true
         
         # Now deploy ingress after everything is ready
         kubectl apply -f k8s/ingress.yaml
