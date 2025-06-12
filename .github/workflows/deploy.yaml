@@ -13,6 +13,7 @@ on:
       - 'app/**'
       - 'docker/**'
       - 'k8s/**'
+  workflow_dispatch:
 
 env:
   AWS_REGION: us-west-2
