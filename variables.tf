@@ -43,7 +43,7 @@ variable "private_subnet_cidrs" {
 variable "cluster_version" {
   description = "Kubernetes version"
   type        = string
-  default     = "1.28"
+  default     = "1.32"
 }
 
 variable "node_instance_types" {
