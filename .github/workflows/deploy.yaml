@@ -1,26 +1,23 @@
 name: Build and Deploy to EKS
-
 on:
   push:
-    branches:
-      - "main"
+    branches: [ "main" ]
     paths:
       - 'app/**'
       - 'docker/**'
       - 'k8s/**'
   pull_request:
-    branches:
-      - "main"
+    branches: [ "main" ]
     paths:
       - 'app/**'
       - 'docker/**'
       - 'k8s/**'
-  workflow_dispatch: # Allows manual trigger
+  workflow_dispatch:
 
 permissions:
   contents: write
   pull-requests: write
-  id-token: write # Required for OIDC with aws-actions/configure-aws-credentials
+  id-token: write
 
 env:
   AWS_REGION: ap-south-1
@@ -33,162 +30,140 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       image: ${{ steps.image.outputs.image }}
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-      - name: Configure AWS credentials for ECR
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }} # e.g., arn:aws:iam::123456789012:role/GitHubActionsECRRole
-          aws-region: ${{ env.AWS_REGION }}
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+        aws-region: ${{ env.AWS_REGION }}
 
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build, tag, and push image to Amazon ECR
-        id: image
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }} # Use Git SHA for unique image tag
-        run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f docker/Dockerfile .
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-
-          # Also tag as latest for easy reference (optional, but common)
-          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
-
-          # Set output variable for the next job
-          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+    - name: Build, tag, and push image to Amazon ECR
+      id: image
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        # Build a docker container and push it to ECR
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f docker/Dockerfile .
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        
+        # Also tag as latest
+        docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+        
+        echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
   deploy:
     name: Deploy to EKS
     runs-on: ubuntu-latest
-    needs: build # This job depends on the 'build' job completing successfully
-    if: github.ref == 'refs/heads/main' # Only deploy from the main branch
+    needs: build
+    if: github.ref == 'refs/heads/main'
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-      - name: Configure AWS credentials for EKS
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }} # This role needs EKS access permissions
-          aws-region: ${{ env.AWS_REGION }}
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+        aws-region: ${{ env.AWS_REGION }}
 
-      - name: Update kube config
-        run: |
-          aws eks update-kubeconfig --name $EKS_CLUSTER_NAME --region $AWS_REGION
-          # Set KUBECONFIG environment variable for subsequent kubectl commands
-          echo "KUBECONFIG=$HOME/.kube/config" >> $GITHUB_ENV
+    - name: Update kube config
+      run: aws eks update-kubeconfig --name $EKS_CLUSTER_NAME --region $AWS_REGION
 
-      - name: Wait for AWS Load Balancer Controller to be ready
-        run: |
-          echo "Waiting for aws-load-balancer-controller deployment to be available (timeout: 5 minutes)..."
-          kubectl wait --for=condition=Available deployment/aws-load-balancer-controller -n kube-system --timeout=300s
-          echo "AWS Load Balancer Controller is ready."
-        # This step ensures the ALB controller's webhook is active before applying Ingress
+    - name: Install AWS Load Balancer Controller
+      run: |
+        # Check if AWS Load Balancer Controller is already installed
+        if ! kubectl get deployment -n kube-system aws-load-balancer-controller > /dev/null 2>&1; then
+          # Download IAM policy
+          curl -O https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.5.4/docs/install/iam_policy.json
+          
+          # Create IAM policy
+          aws iam create-policy \
+            --policy-name AWSLoadBalancerControllerIAMPolicy \
+            --policy-document file://iam_policy.json || true
+          
+          # Create service account
+          eksctl create iamserviceaccount \
+            --cluster=$EKS_CLUSTER_NAME \
+            --namespace=kube-system \
+            --name=aws-load-balancer-controller \
+            --role-name AmazonEKSLoadBalancerControllerRole \
+            --attach-policy-arn=arn:aws:iam::$(aws sts get-caller-identity --query Account --output text):policy/AWSLoadBalancerControllerIAMPolicy \
+            --approve || true
+          
+          # Install AWS Load Balancer Controller using Helm
+          helm repo add eks https://aws.github.io/eks-charts
+          helm repo update
+          helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
+            -n kube-system \
+            --set clusterName=$EKS_CLUSTER_NAME \
+            --set serviceAccount.create=false \
+            --set serviceAccount.name=aws-load-balancer-controller
+        fi
 
-      - name: Deploy to EKS
-        env:
-          IMAGE_URI: ${{ needs.build.outputs.image }} # Get image URI from the 'build' job
-        run: |
-          # Update the image in deployment.yaml
-          # Ensure ACCOUNT_ID.dkr.ecr.REGION.amazonaws.com/flask-microservice-app:latest
-          # is a placeholder in your k8s/deployment.yaml
-          echo "Updating image in k8s/deployment.yaml to $IMAGE_URI"
-          sed -i "s|ACCOUNT_ID.dkr.ecr.REGION.amazonaws.com/flask-microservice-app:latest|$IMAGE_URI|g" k8s/deployment.yaml
-
-          # Apply Kubernetes manifests
-          echo "Applying Kubernetes manifests..."
-          kubectl apply -f k8s/namespace.yaml
-          kubectl apply -f k8s/deployment.yaml
-          kubectl apply -f k8s/service.yaml
-          kubectl apply -f k8s/ingress.yaml
-          kubectl apply -f k8s/hpa.yaml
-          echo "Kubernetes manifests applied."
-
-          # Wait for deployment to be ready
-          echo "Waiting for deployment/flask-app to be ready (timeout: 5 minutes)..."
-          kubectl rollout status deployment/flask-app -n flask-app --timeout=300s
-          echo "Deployment/flask-app is ready."
-
-          # Get the load balancer URL
-          echo "Waiting for load balancer to be ready (giving 60 seconds for initial provisioning/DNS propagation)..."
-          sleep 60 # Give the ALB a moment to provision and associate with the Ingress
-          kubectl get ingress flask-app-ingress -n flask-app
-          echo "kubectl get ingress flask-app-ingress output above. Check 'ADDRESS' column for LB URL."
+    - name: Deploy to EKS
+      env:
+        IMAGE_URI: ${{ needs.build.outputs.image }}
+      run: |
+        # Update the image in deployment
+        sed -i "s|ACCOUNT_ID.dkr.ecr.REGION.amazonaws.com/flask-microservice-app:latest|$IMAGE_URI|g" k8s/deployment.yaml
+        
+        # Apply Kubernetes manifests
+        kubectl apply -f k8s/namespace.yaml
+        kubectl apply -f k8s/deployment.yaml
+        kubectl apply -f k8s/service.yaml
+        kubectl apply -f k8s/ingress.yaml
+        kubectl apply -f k8s/hpa.yaml
+        
+        # Wait for deployment to be ready
+        kubectl rollout status deployment/flask-app -n flask-app --timeout=300s
+        
+        # Get the load balancer URL
+        echo "Waiting for load balancer to be ready..."
+        sleep 60
+        kubectl get ingress flask-app-ingress -n flask-app
 
   test:
     name: Test Application
     runs-on: ubuntu-latest
-    needs: [build, deploy] # This job depends on both 'build' and 'deploy'
-    if: github.ref == 'refs/heads/main' # Only test deployments from main branch
+    needs: [build, deploy]
+    if: github.ref == 'refs/heads/main'
 
     steps:
-      - name: Configure AWS credentials for Testing
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }} # Role with EKS access for testing
-          aws-region: ${{ env.AWS_REGION }}
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+        aws-region: ${{ env.AWS_REGION }}
 
-      - name: Update kube config
-        run: |
-          aws eks update-kubeconfig --name $EKS_CLUSTER_NAME --region $AWS_REGION
-          echo "KUBECONFIG=$HOME/.kube/config" >> $GITHUB_ENV
+    - name: Update kube config
+      run: aws eks update-kubeconfig --name $EKS_CLUSTER_NAME --region $AWS_REGION
 
-      - name: Test Application Health
-        run: |
-          echo "Attempting to retrieve Load Balancer URL..."
-          # Get the load balancer URL with retry logic
-          LB_URL=""
-          for i in $(seq 1 5); do
-            LB_URL=$(kubectl get ingress flask-app-ingress -n flask-app -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null)
-            if [ -n "$LB_URL" ]; then
-              echo "Load balancer URL found: $LB_URL"
-              break
-            fi
-            echo "Attempt $i: Load balancer URL not yet available. Waiting 20 seconds..."
-            sleep 20
-          done
-
-          if [ -z "$LB_URL" ]; then
-            echo "Load balancer URL not found after multiple attempts. Falling back to port-forward for testing."
-            # Fallback to port-forward if LB_URL is not available (e.g., in minikube or if ALB provisioning is very slow)
-            kubectl port-forward -n flask-app svc/flask-app-service 8080:80 &
-            PORT_FORWARD_PID=$!
-            sleep 10 # Give port-forward a moment to establish
-            echo "Testing via http://localhost:8080..."
-            curl -f http://localhost:8080/health || { kill $PORT_FORWARD_PID; exit 1; }
-            curl -f http://localhost:8080/ || { kill $PORT_FORWARD_PID; exit 1; }
-            kill $PORT_FORWARD_PID # Clean up port-forward process
-            echo "Port-forward tests successful."
-          else
-            echo "Testing application at: http://$LB_URL"
-            # Give sufficient time for DNS propagation for the ALB URL
-            echo "Waiting 120 seconds for DNS propagation and ALB readiness..."
-            sleep 120
-
-            # Test health endpoint with retry
-            for i in $(seq 1 10); do
-              echo "Attempt $i: Checking health endpoint at http://$LB_URL/health"
-              if curl -f http://$LB_URL/health; then
-                echo "Health endpoint OK."
-                break
-              fi
-              echo "Health check failed. Retrying in 10 seconds..."
-              sleep 10
-              if [ $i -eq 10 ]; then
-                echo "Health check failed after multiple retries."
-                exit 1
-              fi
-            done
-
-            # Test root endpoint
-            echo "Checking root endpoint at http://$LB_URL/"
-            curl -f http://$LB_URL/ || exit 1
-            echo "Root endpoint OK."
-          fi
+    - name: Test Application Health
+      run: |
+        # Get the load balancer URL
+        LB_URL=$(kubectl get ingress flask-app-ingress -n flask-app -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+        
+        if [ -z "$LB_URL" ]; then
+          echo "Load balancer URL not found, testing via port-forward"
+          kubectl port-forward -n flask-app svc/flask-app-service 8080:80 &
+          sleep 10
+          curl -f http://localhost:8080/health || exit 1
+          curl -f http://localhost:8080/ || exit 1
+        else
+          echo "Testing application at: http://$LB_URL"
+          # Wait for DNS propagation
+          sleep 120
+          curl -f http://$LB_URL/health || exit 1
+          curl -f http://$LB_URL/ || exit 1
+        fi
