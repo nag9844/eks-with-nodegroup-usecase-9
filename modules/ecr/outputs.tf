@@ -1,14 +1,19 @@
-output "repository_url" {
-  description = "ECR repository URL"
-  value       = aws_ecr_repository.main.repository_url
-}
-
 output "repository_arn" {
-  description = "ECR repository ARN"
+  description = "Full ARN of the repository"
   value       = aws_ecr_repository.main.arn
 }
 
+output "repository_name" {
+  description = "Name of the repository"
+  value       = aws_ecr_repository.main.name
+}
+
+output "repository_url" {
+  description = "URL of the repository"
+  value       = aws_ecr_repository.main.repository_url
+}
+
 output "registry_id" {
-  description = "ECR registry ID"
+  description = "Registry ID where the repository was created"
   value       = aws_ecr_repository.main.registry_id
 }

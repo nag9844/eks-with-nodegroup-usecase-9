@@ -4,4 +4,4 @@ metadata:
   name: flask-app
   labels:
     name: flask-app
-    environment: development
+    environment: production
