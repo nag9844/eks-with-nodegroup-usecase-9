@@ -13,7 +13,7 @@ variable "environment" {
 variable "project" {
   description = "Project name"
   type        = string
-  default     = "flask-microservice"
+  default     = "microservice"
 }
 
 variable "vpc_cidr" {
@@ -93,7 +93,7 @@ variable "common_tags" {
   type        = map(string)
   default = {
     Environment = "dev"
-    Project     = "flask-microservice"
+    Project     = "microservice"
     ManagedBy   = "terraform"
     Owner       = "devops-team"
   }

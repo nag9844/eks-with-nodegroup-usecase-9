@@ -12,7 +12,7 @@ on:
 env:
   AWS_REGION: 'ap-south-1'
   ECR_REPOSITORY: 'flask-microservice'
-  EKS_CLUSTER_NAME: 'flask-microservice-cluster-dev'
+  EKS_CLUSTER_NAME: 'cluster-dev'
 
 permissions:
   contents: read
