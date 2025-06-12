@@ -43,8 +43,24 @@ output "public_subnet_ids" {
   value       = module.vpc.public_subnet_ids
 }
 
+output "terraform_state_bucket" {
+  description = "S3 bucket for Terraform state"
+  value       = aws_s3_bucket.terraform_state.bucket
+}
 
 output "region" {
   description = "AWS region"
   value       = var.region
+}
+
+# Output for kubectl configuration
+output "kubectl_config" {
+  description = "kubectl configuration command"
+  value       = "aws eks update-kubeconfig --region ${var.region} --name ${module.eks.cluster_name}"
+}
+
+# Ingress NGINX Load Balancer URL
+output "ingress_nginx_load_balancer_info" {
+  description = "Command to get ingress-nginx load balancer URL"
+  value       = "kubectl get service ingress-nginx-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'"
 }

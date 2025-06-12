@@ -1,59 +1,238 @@
-## Requirements
+# DevOps Challenge: Flask Microservices on Amazon EKS with ingress-nginx
 
-| Name | Version |
-|------|---------|
-| <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.12.0 |
-| <a name="requirement_aws"></a> [aws](#requirement\_aws) | ~> 5.0 |
-| <a name="requirement_helm"></a> [helm](#requirement\_helm) | ~> 2.17 |
-| <a name="requirement_kubernetes"></a> [kubernetes](#requirement\_kubernetes) | ~> 2.35 |
+This repository contains a complete DevOps solution for deploying Flask microservices to Amazon EKS using Infrastructure as Code (Terraform), containerization (Docker), and CI/CD (GitHub Actions) with ingress-nginx controller.
 
-## Providers
+## Architecture Overview
 
-| Name | Version |
-|------|---------|
-| <a name="provider_aws"></a> [aws](#provider\_aws) | 5.99.1 |
+```
+┌─────────────────────────────────────────────────────────────┐
+│                          AWS Cloud                          │
+├─────────────────────────────────────────────────────────────┤
+│  VPC (10.0.0.0/16)                                        │
+│  ├─ Public Subnets (2 AZs)                                │
+│  │  ├─ NAT Gateway                                         │
+│  │  ├─ Internet Gateway                                    │
+│  │  └─ Network Load Balancer (ingress-nginx)              │
+│  ├─ Private Subnets (2 AZs)                               │
+│  │  └─ EKS Worker Nodes                                    │
+│  ├─ EKS Control Plane                                      │
+│  ├─ ECR Repository                                         │
+│  └─ CloudWatch Logs                                        │
+└─────────────────────────────────────────────────────────────┘
+```
 
-## Modules
+## Prerequisites
 
-| Name | Source | Version |
-|------|--------|---------|
-| <a name="module_ecr"></a> [ecr](#module\_ecr) | ./modules/ecr | n/a |
-| <a name="module_eks"></a> [eks](#module\_eks) | ./modules/eks | n/a |
-| <a name="module_vpc"></a> [vpc](#module\_vpc) | ./modules/vpc | n/a |
+- AWS CLI configured with appropriate credentials
+- kubectl installed
+- Docker installed
+- Terraform >= 1.0
+- GitHub repository with Actions enabled
 
-## Resources
+## Quick Start
 
-| Name | Type |
-|------|------|
-| [aws_region.current](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/region) | data source |
+### Option 1: Automated Setup (Recommended)
 
-## Inputs
+```bash
+# Clone and setup
+git clone <your-repo-url>
+cd devops-challenge
 
-| Name | Description | Type | Default | Required |
-|------|-------------|------|---------|:--------:|
-| <a name="input_availability_zones"></a> [availability\_zones](#input\_availability\_zones) | Availability zones | `list(string)` | <pre>[<br>  "ap-south-1a",<br>  "ap-south-1b"<br>]</pre> | no |
-| <a name="input_cluster_name"></a> [cluster\_name](#input\_cluster\_name) | Name of the EKS cluster | `string` | `"flask-eks-cluster"` | no |
-| <a name="input_cluster_version"></a> [cluster\_version](#input\_cluster\_version) | Kubernetes version for EKS cluster | `string` | `"1.32"` | no |
-| <a name="input_environment"></a> [environment](#input\_environment) | Environment name | `string` | `"dev"` | no |
-| <a name="input_node_group_desired_size"></a> [node\_group\_desired\_size](#input\_node\_group\_desired\_size) | Desired number of nodes in the node group | `number` | `2` | no |
-| <a name="input_node_group_instance_types"></a> [node\_group\_instance\_types](#input\_node\_group\_instance\_types) | Instance types for EKS node group | `list(string)` | <pre>[<br>  "t3.medium"<br>]</pre> | no |
-| <a name="input_node_group_max_size"></a> [node\_group\_max\_size](#input\_node\_group\_max\_size) | Maximum number of nodes in the node group | `number` | `4` | no |
-| <a name="input_node_group_min_size"></a> [node\_group\_min\_size](#input\_node\_group\_min\_size) | Minimum number of nodes in the node group | `number` | `1` | no |
-| <a name="input_project_name"></a> [project\_name](#input\_project\_name) | Name of the project | `string` | `"flask-microservice"` | no |
-| <a name="input_region"></a> [region](#input\_region) | AWS region | `string` | `"ap-south-1"` | no |
-| <a name="input_vpc_cidr"></a> [vpc\_cidr](#input\_vpc\_cidr) | CIDR block for VPC | `string` | `"10.0.0.0/16"` | no |
+# Deploy with ingress-nginx
+chmod +x scripts/deploy-with-nginx.sh
+./scripts/deploy-with-nginx.sh
+```
 
-## Outputs
+### Option 2: Manual Setup
 
-| Name | Description |
-|------|-------------|
-| <a name="output_cluster_arn"></a> [cluster\_arn](#output\_cluster\_arn) | EKS cluster ARN |
-| <a name="output_cluster_endpoint"></a> [cluster\_endpoint](#output\_cluster\_endpoint) | Endpoint for EKS control plane |
-| <a name="output_cluster_name"></a> [cluster\_name](#output\_cluster\_name) | EKS cluster name |
-| <a name="output_cluster_security_group_id"></a> [cluster\_security\_group\_id](#output\_cluster\_security\_group\_id) | Security group ID attached to the EKS cluster |
-| <a name="output_ecr_repository_url"></a> [ecr\_repository\_url](#output\_ecr\_repository\_url) | ECR repository URL |
-| <a name="output_node_group_arn"></a> [node\_group\_arn](#output\_node\_group\_arn) | EKS node group ARN |
-| <a name="output_private_subnet_ids"></a> [private\_subnet\_ids](#output\_private\_subnet\_ids) | Private subnet IDs |
-| <a name="output_public_subnet_ids"></a> [public\_subnet\_ids](#output\_public\_subnet\_ids) | Public subnet IDs |
-| <a name="output_region"></a> [region](#output\_region) | AWS region |
-| <a name="output_vpc_id"></a> [vpc\_id](#output\_vpc\_id) | VPC ID |
+```bash
+# 1. Deploy infrastructure
+cd terraform
+terraform init
+terraform plan
+terraform apply
+
+# 2. Configure kubectl
+aws eks update-kubeconfig --region us-west-2 --name flask-eks-cluster
+
+# 3. Build and push Docker image
+ECR_URL=$(terraform output -raw ecr_repository_url)
+aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin $ECR_URL
+docker build -t flask-microservice -f docker/Dockerfile .
+docker tag flask-microservice:latest $ECR_URL:latest
+docker push $ECR_URL:latest
+
+# 4. Update deployment with ECR URL
+sed -i "s|ACCOUNT_ID.dkr.ecr.REGION.amazonaws.com/flask-microservice-app:latest|$ECR_URL:latest|g" k8s/deployment.yaml
+
+# 5. Deploy application
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/deployment.yaml
+kubectl apply -f k8s/service.yaml
+kubectl apply -f k8s/hpa.yaml
+kubectl apply -f k8s/ingress-nginx.yaml
+
+# 6. Get Load Balancer URL
+kubectl get svc ingress-nginx-controller -n ingress-nginx
+```
+
+## Repository Structure
+
+```
+├── terraform/                 # Infrastructure as Code
+│   ├── modules/               # Terraform modules
+│   │   ├── vpc/              # VPC configuration
+│   │   ├── eks/              # EKS cluster with ingress-nginx
+│   │   └── ecr/              # Container registry
+│   ├── main.tf               # Main configuration
+│   └── variables.tf          # Variable definitions
+├── docker/                   # Container configurations
+│   └── Dockerfile            # Flask app container
+├── k8s/                      # Kubernetes manifests
+│   ├── deployment.yaml       # Application deployment
+│   ├── service.yaml          # Service configuration
+│   ├── ingress-nginx.yaml    # ingress-nginx ingress
+│   ├── namespace.yaml        # Namespace
+│   └── hpa.yaml             # Horizontal Pod Autoscaler
+├── .github/workflows/        # CI/CD pipelines
+│   ├── terraform.yml         # IaC pipeline
+│   └── deploy-nginx.yml      # Application deployment with nginx
+├── app/                      # Flask application code
+├── monitoring/               # Monitoring configurations
+└── scripts/                  # Deployment scripts
+    ├── deploy-with-nginx.sh  # Main deployment script
+    ├── get-nginx-url.sh      # Get load balancer URL
+    ├── access-service.sh     # Service access guide
+    ├── setup.sh              # Complete setup
+    └── cleanup.sh            # Cleanup resources
+```
+
+## Accessing the Application
+
+### 1. Get Load Balancer URL
+
+```bash
+# Get the external URL
+kubectl get svc ingress-nginx-controller -n ingress-nginx
+
+# Or use the helper script
+./scripts/get-nginx-url.sh
+```
+
+### 2. Access Endpoints
+
+Once you have the load balancer hostname:
+
+```
+🌐 Main App: http://<load-balancer-hostname>
+❤️  Health Check: http://<load-balancer-hostname>/health
+👥 API Users: http://<load-balancer-hostname>/api/users
+📊 Metrics: http://<load-balancer-hostname>/metrics
+```
+
+### 3. Alternative Access (Port Forward)
+
+```bash
+# Always works for testing
+kubectl port-forward -n flask-app svc/flask-app-service 8080:80
+
+# Then access locally
+curl http://localhost:8080/health
+```
+
+## CI/CD Pipelines
+
+### Terraform Pipeline (`terraform.yml`)
+- **PR**: Runs `terraform fmt`, `validate`, and `plan`
+- **Main**: Runs `terraform apply` on merge
+
+### Application Pipeline (`deploy-nginx.yml`)
+- **PR**: Builds and tests Docker image
+- **Main**: Builds, pushes to ECR, and deploys to EKS with ingress-nginx
+
+## Monitoring
+
+- **CloudWatch**: Cluster and application logs
+- **Prometheus**: Metrics collection (optional)
+- **Grafana**: Visualization dashboard (optional)
+
+```bash
+# Deploy monitoring (optional)
+kubectl apply -f monitoring/
+```
+
+## Key Features
+
+### ingress-nginx Benefits
+- ✅ **Simple Setup**: No complex IAM/OIDC configuration
+- ✅ **Single Load Balancer**: Cost-effective AWS NLB
+- ✅ **Portable**: Works on any Kubernetes cluster
+- ✅ **Feature Rich**: SSL, rate limiting, metrics built-in
+- ✅ **Reliable**: Battle-tested in production environments
+
+### Security Features
+- Private subnets for worker nodes
+- IAM roles with least privilege
+- Security groups with minimal required access
+- ECR image scanning enabled
+- EKS cluster encryption at rest
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Load Balancer Not Ready**
+   ```bash
+   kubectl get svc -n ingress-nginx
+   # Wait for EXTERNAL-IP to show hostname
+   ```
+
+2. **Application Not Responding**
+   ```bash
+   kubectl get pods -n flask-app
+   kubectl logs -f deployment/flask-app -n flask-app
+   ```
+
+3. **kubectl Not Configured**
+   ```bash
+   aws eks update-kubeconfig --region us-west-2 --name flask-eks-cluster
+   ```
+
+### Useful Commands
+
+```bash
+# Check all resources
+kubectl get all -n flask-app
+
+# Check ingress status
+kubectl get ingress -n flask-app
+
+# Check load balancer
+kubectl get svc -n ingress-nginx
+
+# View application logs
+kubectl logs -f deployment/flask-app -n flask-app
+
+# Port forward for testing
+kubectl port-forward -n flask-app svc/flask-app-service 8080:80
+```
+
+## Cleanup
+
+```bash
+# Automated cleanup
+./scripts/cleanup.sh
+
+# Manual cleanup
+kubectl delete namespace flask-app monitoring
+cd terraform && terraform destroy
+```
+
+## Cost Optimization
+
+- Uses single NLB instead of multiple ALBs
+- Efficient resource allocation with HPA
+- Spot instances can be enabled for cost savings
+- Resource limits prevent over-provisioning
+
+This setup provides a production-ready, cost-effective solution for deploying Flask microservices on EKS with reliable external access through ingress-nginx.

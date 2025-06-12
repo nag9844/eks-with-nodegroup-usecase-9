@@ -1,67 +1,74 @@
-from flask import Flask, jsonify, request
-import os
-import logging
-from datetime import datetime
+from flask import Flask, jsonify, redirect
+from flask_restful import Api, MethodNotAllowed, NotFound
+from flask_cors import CORS
+from util.common import domain, port, prefix, build_swagger_config_json
+from resources.swaggerConfig import SwaggerConfig
+from resources.bookResource import BooksGETResource, BookGETResource, BookPOSTResource, BookPUTResource, BookDELETEResource
+from flask_swagger_ui import get_swaggerui_blueprint
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# ============================================
+# Main
+# ============================================
+application = Flask(__name__)
+app = application
+app.config['PROPAGATE_EXCEPTIONS'] = True
+CORS(app)
+api = Api(app, prefix=prefix, catch_all_404s=True)
 
-app = Flask(__name__)
+# ============================================
+# Swagger
+# ============================================
+build_swagger_config_json()
+swaggerui_blueprint = get_swaggerui_blueprint(
+    prefix,
+    f'http://{domain}:{port}{prefix}/swagger-config',
+    config={
+        'app_name': "Flask API",
+        "layout": "BaseLayout",
+        "docExpansion": "none"
+    },
+)
+app.register_blueprint(swaggerui_blueprint)
 
-# Health check endpoint
-@app.route('/health')
-def health_check():
-    return jsonify({
-        'status': 'healthy',
-        'timestamp': datetime.utcnow().isoformat(),
-        'service': 'flask-microservice'
-    }), 200
+# ============================================
+# Error Handler
+# ============================================
 
-# Root endpoint
+
+@app.errorhandler(NotFound)
+def handle_method_not_found(e):
+    response = jsonify({"message": str(e)})
+    response.status_code = 404
+    return response
+
+
+@app.errorhandler(MethodNotAllowed)
+def handle_method_not_allowed_error(e):
+    response = jsonify({"message": str(e)})
+    response.status_code = 405
+    return response
+
+
 @app.route('/')
-def home():
-    return jsonify({
-        'message': 'Welcome to Flask Microservice on EKS!',
-        'version': '1.0.0',
-        'timestamp': datetime.utcnow().isoformat()
-    })
+def redirect_to_prefix():
+    if prefix != '':
+        return redirect(prefix)
 
-# API endpoint
-@app.route('/api/users', methods=['GET'])
-def get_users():
-    users = [
-        {'id': 1, 'name': 'John Doe', 'email': 'john@example.com'},
-        {'id': 2, 'name': 'Jane Smith', 'email': 'jane@example.com'},
-        {'id': 3, 'name': 'Bob Johnson', 'email': 'bob@example.com'}
-    ]
-    return jsonify({'users': users})
 
-# POST endpoint
-@app.route('/api/users', methods=['POST'])
-def create_user():
-    data = request.get_json()
-    if not data or 'name' not in data or 'email' not in data:
-        return jsonify({'error': 'Name and email are required'}), 400
-    
-    new_user = {
-        'id': 4,  # In real app, this would be generated
-        'name': data['name'],
-        'email': data['email']
-    }
-    
-    logger.info(f"Created new user: {new_user}")
-    return jsonify({'user': new_user}), 201
-
-# Metrics endpoint for monitoring
-@app.route('/metrics')
-def metrics():
-    return jsonify({
-        'requests_total': 100,  # In real app, this would be tracked
-        'uptime_seconds': 3600,
-        'memory_usage_mb': 128
-    })
+# ============================================
+# Add Resource
+# ============================================
+# GET swagger config
+api.add_resource(SwaggerConfig, '/swagger-config')
+# GET books
+api.add_resource(BooksGETResource, '/books')
+api.add_resource(BookGETResource, '/books/<int:id>')
+# POST book
+api.add_resource(BookPOSTResource, '/books')
+# PUT book
+api.add_resource(BookPUTResource, '/books/<int:id>')
+# DELETE book
+api.add_resource(BookDELETEResource, '/books/<int:id>')
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+    app.run(debug=True)

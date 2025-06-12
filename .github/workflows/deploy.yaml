@@ -5,13 +5,11 @@ on:
     branches: [ "main" ]
     paths:
       - 'app/**'
-      - 'docker/**'
       - 'k8s/**'
   pull_request:
     branches: [ "main" ]
     paths:
       - 'app/**'
-      - 'docker/**'
       - 'k8s/**'
   workflow_dispatch:
 
@@ -53,7 +51,7 @@ jobs:
         IMAGE_TAG: ${{ github.sha }}
       run: |
         # Build a docker container and push it to ECR
-        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f docker/Dockerfile .
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f app/Dockerfile .
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
         
         # Also tag as latest

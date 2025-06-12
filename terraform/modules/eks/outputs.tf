@@ -42,3 +42,8 @@ output "cluster_version" {
   description = "The Kubernetes version for the EKS cluster"
   value       = aws_eks_cluster.main.version
 }
+
+output "ingress_nginx_load_balancer_hostname" {
+  description = "Hostname of the ingress-nginx load balancer"
+  value       = "Run: kubectl get service ingress-nginx-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'"
+}
