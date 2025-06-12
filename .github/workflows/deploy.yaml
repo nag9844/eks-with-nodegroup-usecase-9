@@ -178,7 +178,6 @@ jobs:
         # Deploy application first (without ingress)
         kubectl apply -f k8s/deployment.yaml
         kubectl apply -f k8s/service.yaml
-        kubectl apply -f k8s/hpa.yaml
         
         # Wait for deployment to be ready
         kubectl rollout status deployment/flask-app -n flask-app --timeout=300s
