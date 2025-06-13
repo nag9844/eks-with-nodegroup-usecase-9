@@ -32,17 +32,14 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Build Docker Image 
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build -t $ECR_REGISTRY/flask-app:${{ github.sha }} ./app
-          docker tag $ECR_REGISTRY/flask-app:${{ github.sha }} $ECR_REGISTRY/flask-app:latest
+          docker build -t ${{ vars.ECR_REGISTRY }}/flask-app:${{ github.sha }} ./app
+          docker tag ${{ vars.ECR_REGISTRY }}/flask-app:${{ github.sha }} ${{ vars.ECR_REGISTRY }}/flask-app:latest
 
       - name: Push Docker Image 
         run: |
-          docker push $ECR_REGISTRY/flask-app:${{ github.sha }}
-          docker push $ECR_REGISTRY/flask-app:latest
+          docker push ${{ vars.ECR_REGISTRY }}/flask-app:${{ github.sha }}
+          docker push ${{ vars.ECR_REGISTRY }}/flask-app:latest
 
   deploy:
     name: Deploy App and ALB Ingress
