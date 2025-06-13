@@ -8,10 +8,6 @@ on:
     branches:
       - main
 
-permissions:
-  contents: write
-  pull-requests: write
-  id-token: write
 
 env:
   AWS_REGION: ${{ secrets.AWS_REGION || 'ap-south-1' }}
@@ -20,8 +16,9 @@ jobs:
   terraform_plan_and_opa_check:
     runs-on: ubuntu-latest
     permissions:
-      contents: read # Required to checkout the repo
-      pull-requests: write # Required to comment on PRs (optional, but good for feedback)
+      contents: write
+      pull-requests: write
+      id-token: write
 
     steps:
       - name: Checkout repository
