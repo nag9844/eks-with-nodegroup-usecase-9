@@ -11,6 +11,9 @@ permissions:
   id-token: write
   contents: read
 
+env:
+  AWS_REGION: ap-south-1
+  
 jobs:
   build-push-Flask-app:
     runs-on: ubuntu-latest
