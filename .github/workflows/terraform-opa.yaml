@@ -12,6 +12,9 @@ permissions:
   contents: write
   pull-requests: write
   id-token: write
+  
+env:
+      AWS_REGION: ${{ secrets.AWS_REGION || 'ap-south-1' }}
 
 jobs:
   terraform_plan_and_opa_check:
