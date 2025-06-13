@@ -1,65 +1,24 @@
-variable "region" {
-  description = "AWS region"
-  type        = string
-  default     = "ap-south-1"
-}
-
-variable "cluster_name" {
-  description = "Name of the EKS cluster"
-  type        = string
-  default     = "flask-eks-cluster"
-}
-
-variable "cluster_version" {
-  description = "Kubernetes version for EKS cluster"
-  type        = string
-  default     = "1.32"
-}
-
-variable "vpc_cidr" {
-  description = "CIDR block for VPC"
+variable "vpc_cidr_block" {
+  description = "Cidr range for vpc"
   type        = string
   default     = "10.0.0.0/16"
 }
 
-variable "availability_zones" {
-  description = "Availability zones"
-  type        = list(string)
-  default     = ["ap-south-1a", "ap-south-1b"]
-}
-
-variable "node_group_instance_types" {
-  description = "Instance types for EKS node group"
-  type        = list(string)
-  default     = ["t3.medium"]
-}
-
-variable "node_group_desired_size" {
-  description = "Desired number of nodes in the node group"
-  type        = number
-  default     = 2
-}
-
-variable "node_group_max_size" {
-  description = "Maximum number of nodes in the node group"
-  type        = number
-  default     = 4
-}
-
-variable "node_group_min_size" {
-  description = "Minimum number of nodes in the node group"
-  type        = number
-  default     = 1
-}
-
-variable "environment" {
-  description = "Environment name"
+variable "name" {
+  description = "Name to be used on VPC created"
   type        = string
-  default     = "dev"
+  default     = "demo" 
 }
 
-variable "project_name" {
-  description = "Name of the project"
+variable "region" {
+  description = "Name of the region"
   type        = string
-  default     = "flask-microservice"
+  default     = "us-east-1"
+}
+
+# EKS OIDC ROOT CA Thumbprint - valid until 2037
+variable "eks_oidc_root_ca_thumbprint" {
+  type        = string
+  description = "Thumbprint of Root CA for EKS OIDC, Valid until 2037"
+  default     = "9e99a48a9960b14926bb7f3b02e22da2b0ab7280"
 }

@@ -1,41 +1,47 @@
-# Data sources
-#data "aws_caller_identity" "current" {}
-data "aws_region" "current" {}
-
-# VPC Module
 module "vpc" {
   source = "./modules/vpc"
+  name           = var.name
+  vpc_cidr_block = var.vpc_cidr_block
   
-  vpc_cidr           = var.vpc_cidr
-  availability_zones = var.availability_zones
-  cluster_name       = var.cluster_name
-  environment        = var.environment
-  project_name       = var.project_name
 }
 
-# ECR Module
+module "iam" {
+  source = "./modules/iam"
+  name = var.name
+  aws_iam_openid_connect_provider_arn = module.eks.aws_iam_openid_connect_provider_arn
+  aws_iam_openid_connect_provider_extract_from_arn = module.eks.aws_iam_openid_connect_provider_extract_from_arn
+
+}
+
 module "ecr" {
   source = "./modules/ecr"
-  
-  repository_name = "${var.project_name}-app"
-  environment     = var.environment
-  project_name    = var.project_name
 }
 
-# EKS Module
+module "security_group" {
+  source = "./modules/security_group"
+  name   = var.name
+  vpc_id = module.vpc.vpc_id
+}
+
 module "eks" {
   source = "./modules/eks"
-  
-  cluster_name                 = var.cluster_name
-  cluster_version             = var.cluster_version
-  vpc_id                      = module.vpc.vpc_id
-  private_subnet_ids          = module.vpc.private_subnet_ids
-  public_subnet_ids           = module.vpc.public_subnet_ids
-  node_group_instance_types   = var.node_group_instance_types
-  node_group_desired_size     = var.node_group_desired_size
-  node_group_max_size         = var.node_group_max_size
-  node_group_min_size         = var.node_group_min_size
-  environment                 = var.environment
-  project_name                = var.project_name
+  name                = var.name
+  public_subnets      = module.vpc.public_subnets
+  private_subnets     = module.vpc.private_subnets
+  cluster_role_arn    = module.iam.eks_cluster_role_arn
+  node_role_arn       = module.iam.eks_node_role_arn
+  eks_oidc_root_ca_thumbprint = var.eks_oidc_root_ca_thumbprint
+  cluster_role_dependency = module.iam.eks_role_depends_on
+  security_group_ids  = [module.security_group.eks_security_group_id]
 }
 
+module "helm" {
+  source = "./modules/helm"
+  cluster_id = module.eks.cluster_id
+  cluster_endpoint = module.eks.cluster_endpoint
+  cluster_certificate_authority_data = module.eks.cluster_certificate_authority_data
+  lbc_iam_depends_on = module.iam.lbc_iam_depends_on
+  lbc_iam_role_arn   = module.iam.lbc_iam_role_arn
+  vpc_id             = module.vpc.vpc_id
+  aws_region         = var.region
+}
