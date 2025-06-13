@@ -11,7 +11,7 @@ resource "aws_ecr_repository" "flask_app" {
   }
 }
 
-# ECR Lifecycle Policy for Patient Service
+# ECR Lifecycle Policy for flask_app
 resource "aws_ecr_lifecycle_policy" "flask_app" {
   repository = aws_ecr_repository.flask_app.name
 
