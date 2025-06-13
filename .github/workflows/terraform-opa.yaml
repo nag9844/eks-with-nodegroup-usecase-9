@@ -25,6 +25,12 @@ jobs:
           # Important: Disable terraform_wrapper if you encounter issues with OPA parsing the JSON.
           # The wrapper adds metadata that can sometimes interfere with JSON parsing.
           terraform_wrapper: false 
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Terraform Init
         id: init
