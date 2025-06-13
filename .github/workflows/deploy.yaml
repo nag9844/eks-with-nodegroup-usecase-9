@@ -4,14 +4,12 @@ on:
   push:
     branches: [ "main" ]
     paths:
-      - 'app/**'
-      - 'docker/**'
+      - 'Api-Flask/**'
       - 'k8s/**'
   pull_request:
     branches: [ "main" ]
     paths:
-      - 'app/**'
-      - 'docker/**'
+      - 'Api-Flask/**'
       - 'k8s/**'
   workflow_dispatch:
 

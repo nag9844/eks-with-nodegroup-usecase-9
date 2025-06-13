@@ -44,10 +44,7 @@ data "http" "lbc_iam_policy" {
   }
 }
 
-output "lbc_iam_policy" {
-  #value = data.http.lbc_iam_policy.body
-  value = data.http.lbc_iam_policy.response_body
-}
+
 
 # Resource: Create AWS Load Balancer Controller IAM Policy 
 resource "aws_iam_policy" "lbc_iam_policy" {
@@ -57,9 +54,6 @@ resource "aws_iam_policy" "lbc_iam_policy" {
   policy = data.http.lbc_iam_policy.response_body
 }
 
-output "lbc_iam_policy_arn" {
-  value = aws_iam_policy.lbc_iam_policy.arn 
-}
 
 # Resource: Create IAM Role 
 resource "aws_iam_role" "lbc_iam_role" {
@@ -97,10 +91,6 @@ resource "aws_iam_role_policy_attachment" "lbc_iam_role_policy_attach" {
   role       = aws_iam_role.lbc_iam_role.name
 }
 
-output "lbc_iam_role_arn" {
-  description = "AWS Load Balancer Controller IAM Role ARN"
-  value = aws_iam_role.lbc_iam_role.arn
-}
 
 resource "aws_iam_role_policy_attachment" "eks_worker_node_policy" {
   role       = aws_iam_role.eks_node_role.name
@@ -115,20 +105,4 @@ resource "aws_iam_role_policy_attachment" "eks_cni_policy" {
 resource "aws_iam_role_policy_attachment" "ecr_read_only" {
   role       = aws_iam_role.eks_node_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
-}
-
-output "eks_cluster_role_arn" {
-    value = aws_iam_role.eks_role.arn
-}
-
-output "eks_node_role_arn" {
-    value = aws_iam_role.eks_node_role.arn
-}
-
-output "eks_role_depends_on" {
-  value = aws_iam_role.eks_role
-}
-
-output "lbc_iam_depends_on" {
-  value = aws_iam_role.lbc_iam_role
 }

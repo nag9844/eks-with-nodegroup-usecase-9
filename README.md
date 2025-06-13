@@ -28,7 +28,7 @@ No resources.
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
 | <a name="input_name"></a> [name](#input\_name) | Name to be used on VPC created | `string` | `"test"` | no |
-| <a name="input_region"></a> [region](#input\_region) | Name of the region | `string` | `"us-east-1"` | no |
+| <a name="input_region"></a> [region](#input\_region) | Name of the region | `string` | `"ap-south-1"` | no |
 | <a name="input_vpc_cidr_block"></a> [vpc\_cidr\_block](#input\_vpc\_cidr\_block) | Cidr range for vpc | `string` | `"10.0.0.0/16"` | no |
 
 ## Outputs
